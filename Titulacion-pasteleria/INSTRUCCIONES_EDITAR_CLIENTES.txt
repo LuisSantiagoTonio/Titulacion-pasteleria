@@ -1,0 +1,14 @@
+ACTUALIZACIÓN: EDITAR CLIENTES
+
+1. Detén React y Node.js con Ctrl + C en ambas terminales.
+2. Copia las carpetas client y server de esta actualización dentro de tu proyecto.
+3. Cuando Windows pregunte, elige "Reemplazar los archivos en el destino".
+4. No borres ni reemplaces server/.env.
+5. No es necesario importar ningún archivo SQL: la tabla customers ya sirve para esta función.
+6. Inicia el backend:
+   cd server
+   npm run dev
+7. Inicia el frontend en otra terminal:
+   cd client
+   npm run dev
+8. En Clientes aparecerá un botón con lápiz en cada tarjeta. Al pulsarlo podrás cambiar nombre, teléfono y correo.
