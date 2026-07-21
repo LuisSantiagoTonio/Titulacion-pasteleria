@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { pool } from './db.js';
+import { initializeDatabase, pool } from './db.js';
 import { createSessionToken, hashPassword, hashSessionToken, verifyPassword } from './auth.js';
 
 dotenv.config();
@@ -9,7 +9,17 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.PORT || 4000);
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
+const allowedOrigins = String(process.env.CLIENT_ORIGIN || 'http://localhost:5173,http://localhost:5174,http://localhost:5175')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`Origen no permitido por CORS: ${origin}`));
+  }
+}));
 app.use(express.json());
 
 const allowedStatuses = ['pending', 'preparing', 'ready', 'delivered', 'cancelled'];
@@ -188,6 +198,47 @@ app.put('/api/users/:id', requireAdmin, asyncRoute(async (req, res) => {
   res.json(updated);
 }));
 
+
+
+app.delete('/api/users/:id', requireAdmin, asyncRoute(async (req, res) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ message: 'El identificador del usuario no es válido.' });
+  }
+  if (userId === req.user.id) {
+    return res.status(400).json({ message: 'No puedes eliminar la cuenta con la que tienes la sesión iniciada.' });
+  }
+
+  const [[user]] = await pool.query('SELECT id, role FROM users WHERE id = ? LIMIT 1', [userId]);
+  if (!user) return res.status(404).json({ message: 'Usuario no encontrado.' });
+
+  if (user.role === 'admin') {
+    const [[adminCount]] = await pool.query("SELECT COUNT(*) AS total FROM users WHERE role = 'admin' AND status = 'active'");
+    if (Number(adminCount.total) <= 1) {
+      return res.status(400).json({ message: 'No se puede eliminar al único administrador activo.' });
+    }
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    // Se eliminan explícitamente las sesiones para que también funcione en bases
+    // donde la llave foránea no fue creada con ON DELETE CASCADE.
+    await connection.query('DELETE FROM user_sessions WHERE user_id = ?', [userId]);
+    const [result] = await connection.query('DELETE FROM users WHERE id = ?', [userId]);
+    if (!result.affectedRows) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Usuario no encontrado.' });
+    }
+    await connection.commit();
+    res.status(204).send();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}));
 
 app.get('/api/dashboard', asyncRoute(async (_req, res) => {
   const [summaryRows] = await pool.query(`
@@ -391,6 +442,18 @@ app.put('/api/customers/:id', asyncRoute(async (req, res) => {
   res.json(updated);
 }));
 
+
+app.delete('/api/customers/:id', asyncRoute(async (req, res) => {
+  const customerId = Number(req.params.id);
+  if (!Number.isInteger(customerId) || customerId <= 0) {
+    return res.status(400).json({ message: 'El identificador del cliente no es válido.' });
+  }
+
+  const [result] = await pool.query('DELETE FROM customers WHERE id = ?', [customerId]);
+  if (!result.affectedRows) return res.status(404).json({ message: 'Cliente no encontrado.' });
+  res.status(204).send();
+}));
+
 app.get('/api/orders', asyncRoute(async (_req, res) => {
   const [orders] = await pool.query(`
     SELECT o.*, COALESCE(c.name, 'Cliente general') AS customer_name,
@@ -481,6 +544,57 @@ app.post('/api/orders', asyncRoute(async (req, res) => {
   }
 }));
 
+app.delete('/api/orders/:id', asyncRoute(async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ message: 'El identificador del pedido no es válido.' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[order]] = await connection.query(
+      'SELECT id, status FROM orders WHERE id = ? FOR UPDATE',
+      [orderId]
+    );
+    if (!order) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Pedido no encontrado.' });
+    }
+
+    // Si el pedido todavía descontaba inventario, se restauran las existencias.
+    if (order.status !== 'cancelled') {
+      const [items] = await connection.query(
+        'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
+        [orderId]
+      );
+      for (const item of items) {
+        await connection.query(
+          'UPDATE products SET stock = stock + ? WHERE id = ?',
+          [item.quantity, item.product_id]
+        );
+      }
+    }
+
+    // Se eliminan primero los detalles para funcionar incluso si la base de
+    // producción no tiene configurado ON DELETE CASCADE.
+    await connection.query('DELETE FROM order_items WHERE order_id = ?', [orderId]);
+    const [result] = await connection.query('DELETE FROM orders WHERE id = ?', [orderId]);
+    if (!result.affectedRows) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Pedido no encontrado.' });
+    }
+
+    await connection.commit();
+    res.status(204).send();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}));
+
 app.patch('/api/orders/:id/status', asyncRoute(async (req, res) => {
   const nextStatus = String(req.body.status || '');
   if (!allowedStatuses.includes(nextStatus)) {
@@ -528,7 +642,7 @@ app.use((error, _req, res, _next) => {
     return res.status(409).json({ message: 'Ya existe un registro con ese correo o identificador.' });
   }
   if (error.code === 'ER_ROW_IS_REFERENCED_2') {
-    return res.status(409).json({ message: 'No se puede eliminar porque el producto ya aparece en pedidos.' });
+    return res.status(409).json({ message: 'No se puede eliminar porque el registro está relacionado con otros datos. Elimina primero los registros asociados.' });
   }
 
   res.status(error.statusCode || 500).json({
@@ -536,6 +650,18 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-app.listen(port, () => {
-  console.log(`API disponible en http://localhost:${port}`);
-});
+async function startServer() {
+  try {
+    await initializeDatabase();
+    app.listen(port, () => {
+      console.log(`API disponible en http://localhost:${port}`);
+      console.log('MySQL conectado y estructura verificada correctamente.');
+    });
+  } catch (error) {
+    console.error('No fue posible iniciar la API porque MySQL no está disponible o la configuración es incorrecta.');
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+}
+
+startServer();

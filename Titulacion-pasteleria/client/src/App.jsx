@@ -355,7 +355,7 @@ function ProductModal({ product, onClose, onSave }) {
   );
 }
 
-function OrdersPage({ orders, products, customers, loading, onCreate, onStatusChange }) {
+function OrdersPage({ orders, products, customers, loading, onCreate, onStatusChange, onDelete }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [filter, setFilter] = useState('all');
   const filtered = filter === 'all' ? orders : orders.filter((order) => order.status === filter);
@@ -370,7 +370,7 @@ function OrdersPage({ orders, products, customers, loading, onCreate, onStatusCh
       </div>
 
       <SectionCard title="Gestión de pedidos" subtitle={`${filtered.length} pedidos mostrados`}>
-        {loading ? <LoadingState compact /> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-400"><tr><th className="px-6 py-4">Pedido</th><th className="px-4 py-4">Cliente</th><th className="px-4 py-4">Productos</th><th className="px-4 py-4">Pago</th><th className="px-4 py-4">Total</th><th className="px-6 py-4">Estado</th></tr></thead><tbody className="divide-y divide-stone-100">{filtered.map((order) => <tr key={order.id} className="hover:bg-stone-50/70"><td className="px-6 py-4"><p className="font-black text-stone-800">{order.order_number}</p><p className="text-xs text-stone-400">{dateFormatter.format(new Date(order.created_at))}</p></td><td className="px-4 py-4 font-semibold text-stone-600">{order.customer_name}</td><td className="px-4 py-4 text-stone-600">{order.items_count} unidades</td><td className="px-4 py-4 text-stone-600">{paymentLabels[order.payment_method]}</td><td className="px-4 py-4 font-black text-stone-800">{currency.format(order.total)}</td><td className="px-6 py-4"><select disabled={order.status === 'cancelled'} value={order.status} onChange={(e) => onStatusChange(order.id, e.target.value)} className={`rounded-xl border-0 px-3 py-2 text-xs font-bold outline-none ring-1 ring-inset ${statusStyles[order.status]} disabled:opacity-70`}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td></tr>)}</tbody></table>{!filtered.length && <EmptyState text="No hay pedidos con este estado." />}</div>}
+        {loading ? <LoadingState compact /> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-400"><tr><th className="px-6 py-4">Pedido</th><th className="px-4 py-4">Cliente</th><th className="px-4 py-4">Productos</th><th className="px-4 py-4">Pago</th><th className="px-4 py-4">Total</th><th className="px-6 py-4">Estado</th><th className="px-6 py-4 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-stone-100">{filtered.map((order) => <tr key={order.id} className="hover:bg-stone-50/70"><td className="px-6 py-4"><p className="font-black text-stone-800">{order.order_number}</p><p className="text-xs text-stone-400">{dateFormatter.format(new Date(order.created_at))}</p></td><td className="px-4 py-4 font-semibold text-stone-600">{order.customer_name}</td><td className="px-4 py-4 text-stone-600">{order.items_count} unidades</td><td className="px-4 py-4 text-stone-600">{paymentLabels[order.payment_method]}</td><td className="px-4 py-4 font-black text-stone-800">{currency.format(order.total)}</td><td className="px-6 py-4"><select disabled={order.status === 'cancelled'} value={order.status} onChange={(e) => onStatusChange(order.id, e.target.value)} className={`rounded-xl border-0 px-3 py-2 text-xs font-bold outline-none ring-1 ring-inset ${statusStyles[order.status]} disabled:opacity-70`}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td className="px-6 py-4 text-right"><button onClick={() => onDelete(order)} className="rounded-xl border border-rose-100 p-2 text-rose-500 hover:bg-rose-50" title="Eliminar pedido" aria-label={`Eliminar ${order.order_number}`}><Icon name="trash" size={17} /></button></td></tr>)}</tbody></table>{!filtered.length && <EmptyState text="No hay pedidos con este estado." />}</div>}
       </SectionCard>
 
       {modalOpen && <OrderModal products={products} customers={customers} onClose={() => setModalOpen(false)} onSave={async (values) => { await onCreate(values); setModalOpen(false); }} />}
@@ -423,7 +423,7 @@ function OrderModal({ products, customers, onClose, onSave }) {
   );
 }
 
-function CustomersPage({ customers, loading, onCreate, onUpdate }) {
+function CustomersPage({ customers, loading, onCreate, onUpdate, onDelete }) {
   const [modal, setModal] = useState(null);
   const closeModal = () => setModal(null);
 
@@ -446,14 +446,24 @@ function CustomersPage({ customers, loading, onCreate, onUpdate }) {
                 <h3 className="truncate font-black text-stone-900">{customer.name}</h3>
                 <p className="text-xs text-stone-400">Cliente desde {dateFormatter.format(new Date(customer.created_at))}</p>
               </div>
-              <button
-                onClick={() => setModal({ mode: 'edit', customer })}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-stone-200 text-stone-500 transition hover:border-[#8b5e3c]/30 hover:bg-[#8b5e3c]/5 hover:text-[#8b5e3c]"
-                title="Editar cliente"
-                aria-label={`Editar a ${customer.name}`}
-              >
-                <Icon name="edit" size={17} />
-              </button>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  onClick={() => setModal({ mode: 'edit', customer })}
+                  className="grid h-10 w-10 place-items-center rounded-xl border border-stone-200 text-stone-500 transition hover:border-[#8b5e3c]/30 hover:bg-[#8b5e3c]/5 hover:text-[#8b5e3c]"
+                  title="Editar cliente"
+                  aria-label={`Editar a ${customer.name}`}
+                >
+                  <Icon name="edit" size={17} />
+                </button>
+                <button
+                  onClick={() => onDelete(customer)}
+                  className="grid h-10 w-10 place-items-center rounded-xl border border-rose-100 text-rose-500 transition hover:bg-rose-50"
+                  title="Eliminar cliente"
+                  aria-label={`Eliminar a ${customer.name}`}
+                >
+                  <Icon name="trash" size={17} />
+                </button>
+              </div>
             </div>
             <div className="mt-5 space-y-2 text-sm text-stone-500"><p className="flex items-center gap-2"><Icon name="phone" size={16} /> {customer.phone || 'Sin teléfono'}</p><p className="flex items-center gap-2 truncate"><Icon name="mail" size={16} /> {customer.email || 'Sin correo'}</p></div>
             <div className="mt-5 grid grid-cols-2 gap-3 border-t border-stone-100 pt-4"><div><p className="text-xs text-stone-400">Pedidos</p><p className="mt-1 font-black text-stone-800">{customer.orders_count}</p></div><div><p className="text-xs text-stone-400">Consumo</p><p className="mt-1 font-black text-stone-800">{currency.format(customer.total_spent)}</p></div></div>
@@ -556,13 +566,13 @@ function LoginPage({ onLogin }) {
   );
 }
 
-function UsersPage({ users, loading, currentUser, onCreate, onUpdate }) {
+function UsersPage({ users, loading, currentUser, onCreate, onUpdate, onDelete }) {
   const [modal, setModal] = useState(null);
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="flex justify-end"><button onClick={() => setModal({ mode: 'create' })} className="inline-flex items-center gap-2 rounded-2xl bg-[#8b5e3c] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#8b5e3c]/20"><Icon name="plus" size={18} /> Nueva cuenta</button></div>
       <SectionCard title="Cuentas del sistema" subtitle="Los datos mostrados en el menú se cargan desde MySQL">
-        {loading ? <LoadingState compact /> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-400"><tr><th className="px-6 py-4">Usuario</th><th className="px-4 py-4">Correo</th><th className="px-4 py-4">Rol</th><th className="px-4 py-4">Estado</th><th className="px-6 py-4 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-stone-100">{users.map((user) => <tr key={user.id} className="hover:bg-stone-50/70"><td className="px-6 py-4"><div className="flex items-center gap-3"><div className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-rose-100 to-amber-100 font-black text-[#8b5e3c]">{initials(user.name)}</div><div><p className="font-black text-stone-800">{user.name}</p>{user.id === currentUser.id && <p className="text-xs font-bold text-emerald-600">Sesión actual</p>}</div></div></td><td className="px-4 py-4 font-semibold text-stone-600">{user.email}</td><td className="px-4 py-4"><span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">{user.role === 'admin' ? 'Administrador' : 'Empleado'}</span></td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${user.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{user.status === 'active' ? 'Activo' : 'Inactivo'}</span></td><td className="px-6 py-4 text-right"><button onClick={() => setModal({ mode: 'edit', user })} className="rounded-xl border border-stone-200 p-2 text-stone-500 hover:bg-stone-100 hover:text-stone-900" title="Editar cuenta"><Icon name="edit" size={17} /></button></td></tr>)}</tbody></table>{!users.length && <EmptyState text="No hay usuarios registrados." />}</div>}
+        {loading ? <LoadingState compact /> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-400"><tr><th className="px-6 py-4">Usuario</th><th className="px-4 py-4">Correo</th><th className="px-4 py-4">Rol</th><th className="px-4 py-4">Estado</th><th className="px-6 py-4 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-stone-100">{users.map((user) => <tr key={user.id} className="hover:bg-stone-50/70"><td className="px-6 py-4"><div className="flex items-center gap-3"><div className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-rose-100 to-amber-100 font-black text-[#8b5e3c]">{initials(user.name)}</div><div><p className="font-black text-stone-800">{user.name}</p>{user.id === currentUser.id && <p className="text-xs font-bold text-emerald-600">Sesión actual</p>}</div></div></td><td className="px-4 py-4 font-semibold text-stone-600">{user.email}</td><td className="px-4 py-4"><span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">{user.role === 'admin' ? 'Administrador' : 'Empleado'}</span></td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${user.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{user.status === 'active' ? 'Activo' : 'Inactivo'}</span></td><td className="px-6 py-4"><div className="flex justify-end gap-2"><button onClick={() => setModal({ mode: 'edit', user })} className="rounded-xl border border-stone-200 p-2 text-stone-500 hover:bg-stone-100 hover:text-stone-900" title="Editar cuenta"><Icon name="edit" size={17} /></button><button onClick={() => onDelete(user)} disabled={user.id === currentUser.id} className="rounded-xl border border-rose-100 p-2 text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-30" title={user.id === currentUser.id ? 'No puedes eliminar tu sesión actual' : 'Eliminar cuenta'}><Icon name="trash" size={17} /></button></div></td></tr>)}</tbody></table>{!users.length && <EmptyState text="No hay usuarios registrados." />}</div>}
       </SectionCard>
       {modal && <UserModal user={modal.user} onClose={() => setModal(null)} onSave={async (values) => { modal.mode === 'edit' ? await onUpdate(modal.user.id, values) : await onCreate(values); setModal(null); }} />}
     </div>
@@ -679,8 +689,11 @@ export default function App() {
     updateOrderStatus: async (id, status) => { try { await api(`/api/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); await refreshAfterMutation('Estado del pedido actualizado.'); } catch (error) { notify(error.message, 'error'); } },
     createCustomer: async (values) => { try { await api('/api/customers', { method: 'POST', body: JSON.stringify(values) }); await refreshAfterMutation('Cliente registrado correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },
     updateCustomer: async (id, values) => { try { await api(`/api/customers/${id}`, { method: 'PUT', body: JSON.stringify(values) }); await refreshAfterMutation('Cliente actualizado correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },
+    deleteCustomer: async (customer) => { if (!window.confirm(`¿Eliminar al cliente “${customer.name}”? Sus pedidos conservarán el historial como Cliente general.`)) return; try { await api(`/api/customers/${customer.id}`, { method: 'DELETE' }); await refreshAfterMutation('Cliente eliminado correctamente.'); } catch (error) { notify(error.message, 'error'); } },
     createUser: async (values) => { try { await api('/api/users', { method: 'POST', body: JSON.stringify(values) }); await refreshAfterMutation('Cuenta creada correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },
-    updateUser: async (id, values) => { try { await api(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(values) }); await refreshAfterMutation('Cuenta actualizada correctamente.'); if (id === currentUser.id) { const me = await api('/api/auth/me'); setCurrentUser(me.user); } } catch (error) { notify(error.message, 'error'); throw error; } }
+    updateUser: async (id, values) => { try { await api(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(values) }); await refreshAfterMutation('Cuenta actualizada correctamente.'); if (id === currentUser.id) { const me = await api('/api/auth/me'); setCurrentUser(me.user); } } catch (error) { notify(error.message, 'error'); throw error; } },
+    deleteUser: async (user) => { if (user.id === currentUser.id) { notify('No puedes eliminar la cuenta con la sesión actual.', 'error'); return; } if (!window.confirm(`¿Eliminar la cuenta de “${user.name}”? Esta acción cerrará sus sesiones activas.`)) return; try { await api(`/api/users/${user.id}`, { method: 'DELETE' }); await refreshAfterMutation('Usuario eliminado correctamente.'); } catch (error) { notify(error.message, 'error'); } },
+    deleteOrder: async (order) => { if (!window.confirm(`¿Eliminar el pedido “${order.order_number}”? Si no estaba cancelado, se devolverán sus productos al inventario.`)) return; try { await api(`/api/orders/${order.id}`, { method: 'DELETE' }); await refreshAfterMutation('Pedido eliminado correctamente.'); } catch (error) { notify(error.message, 'error'); } }
   };
 
   const pageMeta = {
@@ -702,9 +715,9 @@ export default function App() {
         <main className="p-4 sm:p-6 lg:p-8">
           {activeView === 'dashboard' && <Dashboard data={dashboard} loading={loading} onNavigate={setActiveView} />}
           {activeView === 'products' && <ProductsPage products={products} loading={loading} onCreate={actions.createProduct} onUpdate={actions.updateProduct} onDelete={actions.deleteProduct} />}
-          {activeView === 'orders' && <OrdersPage orders={orders} products={products} customers={customers} loading={loading} onCreate={actions.createOrder} onStatusChange={actions.updateOrderStatus} />}
-          {activeView === 'customers' && <CustomersPage customers={customers} loading={loading} onCreate={actions.createCustomer} onUpdate={actions.updateCustomer} />}
-          {activeView === 'users' && currentUser.role === 'admin' && <UsersPage users={users} loading={loading} currentUser={currentUser} onCreate={actions.createUser} onUpdate={actions.updateUser} />}
+          {activeView === 'orders' && <OrdersPage orders={orders} products={products} customers={customers} loading={loading} onCreate={actions.createOrder} onStatusChange={actions.updateOrderStatus} onDelete={actions.deleteOrder} />}
+          {activeView === 'customers' && <CustomersPage customers={customers} loading={loading} onCreate={actions.createCustomer} onUpdate={actions.updateCustomer} onDelete={actions.deleteCustomer} />}
+          {activeView === 'users' && currentUser.role === 'admin' && <UsersPage users={users} loading={loading} currentUser={currentUser} onCreate={actions.createUser} onUpdate={actions.updateUser} onDelete={actions.deleteUser} />}
         </main>
       </div>
       <Toast toast={toast} onClose={() => setToast(null)} />

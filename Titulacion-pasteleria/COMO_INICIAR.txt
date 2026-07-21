@@ -1,0 +1,10 @@
+1. Abre XAMPP y enciende MySQL.
+2. Ejecuta INICIAR_BACKEND.bat.
+3. Ejecuta INICIAR_FRONTEND.bat.
+4. Abre en el navegador la dirección que muestre Vite.
+
+Cuentas iniciales:
+Administrador: admin@dulcepanel.com / Admin123!
+Empleado: empleado@dulcepanel.com / Empleado123!
+
+El backend usa el puerto 4000 y crea/verifica automáticamente la base de datos y las tablas de usuarios.

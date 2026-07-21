@@ -8,7 +8,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://titulacion-pasteleria-production.up.railway.app',
+        target: 'http://localhost:4000',
         changeOrigin: true
       }
     }

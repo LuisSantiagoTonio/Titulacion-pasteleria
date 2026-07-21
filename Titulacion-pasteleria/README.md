@@ -94,3 +94,12 @@ pasteleria-dashboard/
 ## Nota
 
 El proyecto incluye datos de ejemplo. Puedes eliminarlos o modificarlos desde MySQL después de importar el archivo SQL.
+
+## Inicio rápido en Windows con XAMPP
+
+1. Enciende **MySQL** en XAMPP.
+2. Abre una terminal en `server` y ejecuta `npm run dev`.
+3. Abre otra terminal en `client` y ejecuta `npm run dev`.
+4. Abre la dirección que muestre Vite.
+
+El backend crea automáticamente la base `pasteleria_dashboard`, verifica las tablas de autenticación y agrega las cuentas de prueba si no existen. La configuración local incluida usa MySQL de XAMPP con usuario `root` y contraseña vacía.
