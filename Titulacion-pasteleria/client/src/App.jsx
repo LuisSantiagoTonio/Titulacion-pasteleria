@@ -355,10 +355,23 @@ function ProductModal({ product, onClose, onSave }) {
   );
 }
 
-function OrdersPage({ orders, products, customers, loading, onCreate, onStatusChange, onDelete }) {
-  const [modalOpen, setModalOpen] = useState(false);
+function OrdersPage({ orders, products, customers, loading, onCreate, onUpdate, onStatusChange, onDelete }) {
+  const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [loadingOrder, setLoadingOrder] = useState(false);
   const filtered = filter === 'all' ? orders : orders.filter((order) => order.status === filter);
+
+  const openEdit = async (order) => {
+    setLoadingOrder(true);
+    try {
+      const detail = await api(`/api/orders/${order.id}`);
+      setModal({ mode: 'edit', order: detail });
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      setLoadingOrder(false);
+    }
+  };
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -366,22 +379,25 @@ function OrdersPage({ orders, products, customers, loading, onCreate, onStatusCh
         <div className="flex gap-2 overflow-x-auto pb-1">
           {[['all', 'Todos'], ...Object.entries(statusLabels)].map(([value, label]) => <button key={value} onClick={() => setFilter(value)} className={`whitespace-nowrap rounded-xl px-4 py-2 text-xs font-bold transition ${filter === value ? 'bg-stone-900 text-white' : 'border border-stone-200 bg-white text-stone-500 hover:bg-stone-50'}`}>{label}</button>)}
         </div>
-        <button onClick={() => setModalOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#8b5e3c] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#8b5e3c]/20"><Icon name="plus" size={18} /> Nuevo pedido</button>
+        <button onClick={() => setModal({ mode: 'create' })} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#8b5e3c] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#8b5e3c]/20"><Icon name="plus" size={18} /> Nuevo pedido</button>
       </div>
 
       <SectionCard title="Gestión de pedidos" subtitle={`${filtered.length} pedidos mostrados`}>
-        {loading ? <LoadingState compact /> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-400"><tr><th className="px-6 py-4">Pedido</th><th className="px-4 py-4">Cliente</th><th className="px-4 py-4">Productos</th><th className="px-4 py-4">Pago</th><th className="px-4 py-4">Total</th><th className="px-6 py-4">Estado</th><th className="px-6 py-4 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-stone-100">{filtered.map((order) => <tr key={order.id} className="hover:bg-stone-50/70"><td className="px-6 py-4"><p className="font-black text-stone-800">{order.order_number}</p><p className="text-xs text-stone-400">{dateFormatter.format(new Date(order.created_at))}</p></td><td className="px-4 py-4 font-semibold text-stone-600">{order.customer_name}</td><td className="px-4 py-4 text-stone-600">{order.items_count} unidades</td><td className="px-4 py-4 text-stone-600">{paymentLabels[order.payment_method]}</td><td className="px-4 py-4 font-black text-stone-800">{currency.format(order.total)}</td><td className="px-6 py-4"><select disabled={order.status === 'cancelled'} value={order.status} onChange={(e) => onStatusChange(order.id, e.target.value)} className={`rounded-xl border-0 px-3 py-2 text-xs font-bold outline-none ring-1 ring-inset ${statusStyles[order.status]} disabled:opacity-70`}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td className="px-6 py-4 text-right"><button onClick={() => onDelete(order)} className="rounded-xl border border-rose-100 p-2 text-rose-500 hover:bg-rose-50" title="Eliminar pedido" aria-label={`Eliminar ${order.order_number}`}><Icon name="trash" size={17} /></button></td></tr>)}</tbody></table>{!filtered.length && <EmptyState text="No hay pedidos con este estado." />}</div>}
+        {loading ? <LoadingState compact /> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-400"><tr><th className="px-6 py-4">Pedido</th><th className="px-4 py-4">Cliente</th><th className="px-4 py-4">Productos</th><th className="px-4 py-4">Pago</th><th className="px-4 py-4">Total</th><th className="px-6 py-4">Estado</th><th className="px-6 py-4 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-stone-100">{filtered.map((order) => <tr key={order.id} className="hover:bg-stone-50/70"><td className="px-6 py-4"><p className="font-black text-stone-800">{order.order_number}</p><p className="text-xs text-stone-400">{dateFormatter.format(new Date(order.created_at))}</p></td><td className="px-4 py-4 font-semibold text-stone-600">{order.customer_name}</td><td className="px-4 py-4 text-stone-600">{order.items_count} unidades</td><td className="px-4 py-4 text-stone-600">{paymentLabels[order.payment_method]}</td><td className="px-4 py-4 font-black text-stone-800">{currency.format(order.total)}</td><td className="px-6 py-4"><select disabled={order.status === 'cancelled'} value={order.status} onChange={(e) => onStatusChange(order.id, e.target.value)} className={`rounded-xl border-0 px-3 py-2 text-xs font-bold outline-none ring-1 ring-inset ${statusStyles[order.status]} disabled:opacity-70`}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></td><td className="px-6 py-4 text-right"><div className="inline-flex gap-2"><button disabled={loadingOrder || order.status === 'cancelled'} onClick={() => openEdit(order)} className="rounded-xl border border-stone-200 p-2 text-stone-500 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40" title={order.status === 'cancelled' ? 'Los pedidos cancelados no se pueden editar' : 'Editar pedido'} aria-label={`Editar ${order.order_number}`}><Icon name="edit" size={17} /></button><button onClick={() => onDelete(order)} className="rounded-xl border border-rose-100 p-2 text-rose-500 hover:bg-rose-50" title="Eliminar pedido" aria-label={`Eliminar ${order.order_number}`}><Icon name="trash" size={17} /></button></div></td></tr>)}</tbody></table>{!filtered.length && <EmptyState text="No hay pedidos con este estado." />}</div>}
       </SectionCard>
 
-      {modalOpen && <OrderModal products={products} customers={customers} onClose={() => setModalOpen(false)} onSave={async (values) => { await onCreate(values); setModalOpen(false); }} />}
+      {modal && <OrderModal order={modal.order} products={products} customers={customers} onClose={() => setModal(null)} onSave={async (values) => { if (modal.mode === 'edit') await onUpdate(modal.order.id, values); else await onCreate(values); setModal(null); }} />}
     </div>
   );
 }
 
-function OrderModal({ products, customers, onClose, onSave }) {
-  const availableProducts = products.filter((product) => product.status === 'active' && product.stock > 0);
-  const [form, setForm] = useState({ customer_id: '', payment_method: 'cash', notes: '', items: [{ product_id: availableProducts[0]?.id || '', quantity: 1 }] });
+function OrderModal({ order, products, customers, onClose, onSave }) {
+  const initialItems = order?.items?.length ? order.items.map((item) => ({ product_id: item.product_id, quantity: item.quantity })) : [{ product_id: products.find((product) => product.status === 'active' && product.stock > 0)?.id || '', quantity: 1 }];
+  const [form, setForm] = useState({ customer_id: order?.customer_id || '', payment_method: order?.payment_method || 'cash', notes: order?.notes || '', items: initialItems });
   const [saving, setSaving] = useState(false);
+
+  const originalQuantity = (productId) => Number(order?.items?.find((item) => Number(item.product_id) === Number(productId))?.quantity || 0);
+  const availableProducts = products.filter((product) => product.status === 'active' && (product.stock > 0 || originalQuantity(product.id) > 0));
 
   const total = form.items.reduce((sum, item) => {
     const product = products.find((entry) => Number(entry.id) === Number(item.product_id));
@@ -398,7 +414,7 @@ function OrderModal({ products, customers, onClose, onSave }) {
   };
 
   return (
-    <Modal title="Registrar pedido" subtitle="Selecciona cliente, productos y forma de pago" onClose={onClose} wide>
+    <Modal title={order ? `Editar ${order.order_number}` : 'Registrar pedido'} subtitle={order ? 'Modifica el cliente, productos, cantidades y forma de pago' : 'Selecciona cliente, productos y forma de pago'} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Cliente"><select value={form.customer_id} onChange={(e) => setForm({ ...form, customer_id: e.target.value })} className="input"><option value="">Cliente general</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></Field>
@@ -410,14 +426,15 @@ function OrderModal({ products, customers, onClose, onSave }) {
           <div className="space-y-3">
             {form.items.map((item, index) => {
               const selected = products.find((product) => Number(product.id) === Number(item.product_id));
-              return <div key={index} className="grid gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-3 sm:grid-cols-[1fr_110px_44px]"><select required value={item.product_id} onChange={(e) => updateItem(index, 'product_id', e.target.value)} className="input bg-white">{availableProducts.map((product) => <option key={product.id} value={product.id}>{product.name} — {currency.format(product.price)} ({product.stock} disp.)</option>)}</select><input required type="number" min="1" max={selected?.stock || 1} value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} className="input bg-white" /><button type="button" disabled={form.items.length === 1} onClick={() => removeItem(index)} className="grid h-11 place-items-center rounded-xl text-rose-500 hover:bg-rose-50 disabled:opacity-30"><Icon name="trash" size={18} /></button></div>;
+              const maxStock = Number(selected?.stock || 0) + originalQuantity(item.product_id);
+              return <div key={index} className="grid gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-3 sm:grid-cols-[1fr_110px_44px]"><select required value={item.product_id} onChange={(e) => updateItem(index, 'product_id', e.target.value)} className="input bg-white">{availableProducts.map((product) => <option key={product.id} value={product.id}>{product.name} — {currency.format(product.price)} ({Number(product.stock) + originalQuantity(product.id)} disp.)</option>)}</select><input required type="number" min="1" max={Math.max(maxStock, 1)} value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} className="input bg-white" /><button type="button" disabled={form.items.length === 1} onClick={() => removeItem(index)} className="grid h-11 place-items-center rounded-xl text-rose-500 hover:bg-rose-50 disabled:opacity-30"><Icon name="trash" size={18} /></button></div>;
             })}
           </div>
         </div>
 
         <Field label="Notas"><textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="input min-h-20 resize-none" placeholder="Dedicatoria, horario de entrega, alergias, etc." /></Field>
 
-        <div className="flex flex-col gap-4 rounded-2xl bg-[#2d211b] p-5 text-white sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-stone-400">Total estimado</p><p className="mt-1 text-3xl font-black">{currency.format(total)}</p></div><div className="flex gap-3"><button type="button" onClick={onClose} className="rounded-xl border border-white/20 px-4 py-2.5 text-sm font-bold hover:bg-white/10">Cancelar</button><button disabled={saving || !availableProducts.length} className="rounded-xl bg-[#f4b8c4] px-5 py-2.5 text-sm font-black text-[#2d211b] disabled:opacity-50">{saving ? 'Registrando...' : 'Crear pedido'}</button></div></div>
+        <div className="flex flex-col gap-4 rounded-2xl bg-[#2d211b] p-5 text-white sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-stone-400">Total estimado</p><p className="mt-1 text-3xl font-black">{currency.format(total)}</p></div><div className="flex gap-3"><button type="button" onClick={onClose} className="rounded-xl border border-white/20 px-4 py-2.5 text-sm font-bold hover:bg-white/10">Cancelar</button><button disabled={saving || !availableProducts.length} className="rounded-xl bg-[#f4b8c4] px-5 py-2.5 text-sm font-black text-[#2d211b] disabled:opacity-50">{saving ? 'Guardando...' : order ? 'Guardar cambios' : 'Crear pedido'}</button></div></div>
       </form>
     </Modal>
   );
@@ -697,6 +714,7 @@ export default function App() {
       }
     },
     createOrder: async (values) => { try { await api('/api/orders', { method: 'POST', body: JSON.stringify(values) }); await refreshAfterMutation('Pedido registrado correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },
+    updateOrder: async (id, values) => { try { await api(`/api/orders/${id}`, { method: 'PUT', body: JSON.stringify(values) }); await refreshAfterMutation('Pedido actualizado correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },
     updateOrderStatus: async (id, status) => { try { await api(`/api/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); await refreshAfterMutation('Estado del pedido actualizado.'); } catch (error) { notify(error.message, 'error'); } },
     createCustomer: async (values) => { try { await api('/api/customers', { method: 'POST', body: JSON.stringify(values) }); await refreshAfterMutation('Cliente registrado correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },
     updateCustomer: async (id, values) => { try { await api(`/api/customers/${id}`, { method: 'PUT', body: JSON.stringify(values) }); await refreshAfterMutation('Cliente actualizado correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },
@@ -726,7 +744,7 @@ export default function App() {
         <main className="p-4 sm:p-6 lg:p-8">
           {activeView === 'dashboard' && <Dashboard data={dashboard} loading={loading} onNavigate={setActiveView} />}
           {activeView === 'products' && <ProductsPage products={products} loading={loading} onCreate={actions.createProduct} onUpdate={actions.updateProduct} onDelete={actions.deleteProduct} />}
-          {activeView === 'orders' && <OrdersPage orders={orders} products={products} customers={customers} loading={loading} onCreate={actions.createOrder} onStatusChange={actions.updateOrderStatus} onDelete={actions.deleteOrder} />}
+          {activeView === 'orders' && <OrdersPage orders={orders} products={products} customers={customers} loading={loading} onCreate={actions.createOrder} onUpdate={actions.updateOrder} onStatusChange={actions.updateOrderStatus} onDelete={actions.deleteOrder} />}
           {activeView === 'customers' && <CustomersPage customers={customers} loading={loading} onCreate={actions.createCustomer} onUpdate={actions.updateCustomer} onDelete={actions.deleteCustomer} />}
           {activeView === 'users' && currentUser.role === 'admin' && <UsersPage users={users} loading={loading} currentUser={currentUser} onCreate={actions.createUser} onUpdate={actions.updateUser} onDelete={actions.deleteUser} />}
         </main>

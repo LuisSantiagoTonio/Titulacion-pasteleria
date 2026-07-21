@@ -605,6 +605,140 @@ app.post('/api/orders', asyncRoute(async (req, res) => {
   }
 }));
 
+app.get('/api/orders/:id', asyncRoute(async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ message: 'El identificador del pedido no es válido.' });
+  }
+
+  const [[order]] = await pool.query(`
+    SELECT o.*, COALESCE(c.name, 'Cliente general') AS customer_name
+    FROM orders o
+    LEFT JOIN customers c ON c.id = o.customer_id
+    WHERE o.id = ?
+  `, [orderId]);
+
+  if (!order) return res.status(404).json({ message: 'Pedido no encontrado.' });
+
+  const [items] = await pool.query(`
+    SELECT oi.product_id, oi.quantity, oi.unit_price, oi.subtotal, p.name AS product_name
+    FROM order_items oi
+    LEFT JOIN products p ON p.id = oi.product_id
+    WHERE oi.order_id = ?
+    ORDER BY oi.id
+  `, [orderId]);
+
+  res.json({ ...order, items });
+}));
+
+app.put('/api/orders/:id', asyncRoute(async (req, res) => {
+  const orderId = Number(req.params.id);
+  const customerId = req.body.customer_id ? Number(req.body.customer_id) : null;
+  const paymentMethod = allowedPayments.includes(req.body.payment_method) ? req.body.payment_method : 'cash';
+  const notes = String(req.body.notes || '').trim() || null;
+  const items = Array.isArray(req.body.items) ? req.body.items : [];
+
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ message: 'El identificador del pedido no es válido.' });
+  }
+  if (!items.length) return res.status(400).json({ message: 'Agrega al menos un producto al pedido.' });
+
+  const groupedItems = new Map();
+  for (const item of items) {
+    const productId = Number(item.product_id);
+    const quantity = Number(item.quantity);
+    if (!Number.isInteger(productId) || !Number.isInteger(quantity) || quantity <= 0) {
+      return res.status(400).json({ message: 'Hay un producto o cantidad no válida.' });
+    }
+    groupedItems.set(productId, (groupedItems.get(productId) || 0) + quantity);
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [[order]] = await connection.query(
+      'SELECT id, status FROM orders WHERE id = ? FOR UPDATE',
+      [orderId]
+    );
+    if (!order) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Pedido no encontrado.' });
+    }
+    if (order.status === 'cancelled') {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Los pedidos cancelados no se pueden editar.' });
+    }
+
+    const [oldItems] = await connection.query(
+      'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
+      [orderId]
+    );
+
+    // Primero se devuelven al inventario las cantidades del pedido anterior.
+    for (const item of oldItems) {
+      await connection.query(
+        'UPDATE products SET stock = stock + ? WHERE id = ?',
+        [item.quantity, item.product_id]
+      );
+    }
+
+    let total = 0;
+    const normalizedItems = [];
+    for (const [productId, quantity] of groupedItems.entries()) {
+      const [[product]] = await connection.query(
+        'SELECT id, name, price, stock, status FROM products WHERE id = ? FOR UPDATE',
+        [productId]
+      );
+      if (!product || product.status !== 'active') {
+        throw Object.assign(new Error('Uno de los productos no está disponible.'), { statusCode: 400 });
+      }
+      if (Number(product.stock) < quantity) {
+        throw Object.assign(new Error(`No hay suficientes existencias de ${product.name}.`), { statusCode: 400 });
+      }
+      const unitPrice = Number(product.price);
+      const subtotal = unitPrice * quantity;
+      total += subtotal;
+      normalizedItems.push({ productId, quantity, unitPrice, subtotal });
+    }
+
+    await connection.query('DELETE FROM order_items WHERE order_id = ?', [orderId]);
+
+    for (const item of normalizedItems) {
+      await connection.query(`
+        INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal)
+        VALUES (?, ?, ?, ?, ?)
+      `, [orderId, item.productId, item.quantity, item.unitPrice, item.subtotal]);
+      await connection.query(
+        'UPDATE products SET stock = stock - ? WHERE id = ?',
+        [item.quantity, item.productId]
+      );
+    }
+
+    await connection.query(`
+      UPDATE orders
+      SET customer_id = ?, payment_method = ?, total = ?, notes = ?
+      WHERE id = ?
+    `, [customerId, paymentMethod, total, notes, orderId]);
+
+    await connection.commit();
+
+    const [[updated]] = await pool.query(`
+      SELECT o.*, COALESCE(c.name, 'Cliente general') AS customer_name
+      FROM orders o
+      LEFT JOIN customers c ON c.id = o.customer_id
+      WHERE o.id = ?
+    `, [orderId]);
+    res.json(updated);
+  } catch (error) {
+    await connection.rollback();
+    error.statusCode = error.statusCode || 500;
+    throw error;
+  } finally {
+    connection.release();
+  }
+}));
+
 app.delete('/api/orders/:id', asyncRoute(async (req, res) => {
   const orderId = Number(req.params.id);
   if (!Number.isInteger(orderId) || orderId <= 0) {
