@@ -684,7 +684,18 @@ export default function App() {
   const actions = {
     createProduct: async (values) => { try { await api('/api/products', { method: 'POST', body: JSON.stringify(values) }); await refreshAfterMutation('Producto creado correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },
     updateProduct: async (id, values) => { try { await api(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(values) }); await refreshAfterMutation('Producto actualizado correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },
-    deleteProduct: async (product) => { if (!window.confirm(`¿Eliminar “${product.name}”?`)) return; try { await api(`/api/products/${product.id}`, { method: 'DELETE' }); await refreshAfterMutation('Producto eliminado.'); } catch (error) { notify(error.message, 'error'); } },
+    deleteProduct: async (product) => {
+      const confirmed = window.confirm(
+        `¿Eliminar “${product.name}”?\n\nTambién se eliminarán permanentemente todos los pedidos que contengan este producto y sus detalles. Esta acción no se puede deshacer.`
+      );
+      if (!confirmed) return;
+      try {
+        const result = await api(`/api/products/${product.id}`, { method: 'DELETE' });
+        await refreshAfterMutation(result?.message || 'Producto y pedidos relacionados eliminados.');
+      } catch (error) {
+        notify(error.message, 'error');
+      }
+    },
     createOrder: async (values) => { try { await api('/api/orders', { method: 'POST', body: JSON.stringify(values) }); await refreshAfterMutation('Pedido registrado correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },
     updateOrderStatus: async (id, status) => { try { await api(`/api/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); await refreshAfterMutation('Estado del pedido actualizado.'); } catch (error) { notify(error.message, 'error'); } },
     createCustomer: async (values) => { try { await api('/api/customers', { method: 'POST', body: JSON.stringify(values) }); await refreshAfterMutation('Cliente registrado correctamente.'); } catch (error) { notify(error.message, 'error'); throw error; } },

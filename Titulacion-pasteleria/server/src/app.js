@@ -379,9 +379,70 @@ app.put('/api/products/:id', asyncRoute(async (req, res) => {
 }));
 
 app.delete('/api/products/:id', asyncRoute(async (req, res) => {
-  const [result] = await pool.query('DELETE FROM products WHERE id = ?', [req.params.id]);
-  if (!result.affectedRows) return res.status(404).json({ message: 'Producto no encontrado.' });
-  res.status(204).send();
+  const productId = Number(req.params.id);
+  if (!Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({ message: 'El identificador del producto no es válido.' });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [[product]] = await connection.query(
+      'SELECT id, name FROM products WHERE id = ? FOR UPDATE',
+      [productId]
+    );
+
+    if (!product) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Producto no encontrado.' });
+    }
+
+    // Localizar todos los pedidos que incluyen este producto.
+    const [relatedOrders] = await connection.query(
+      'SELECT DISTINCT order_id FROM order_items WHERE product_id = ?',
+      [productId]
+    );
+    const orderIds = relatedOrders.map((row) => row.order_id);
+
+    if (orderIds.length > 0) {
+      const placeholders = orderIds.map(() => '?').join(', ');
+
+      // Se eliminan todos los detalles de los pedidos relacionados, incluso
+      // aquellos correspondientes a otros productos incluidos en esos pedidos.
+      await connection.query(
+        `DELETE FROM order_items WHERE order_id IN (${placeholders})`,
+        orderIds
+      );
+
+      // Después se eliminan los pedidos completos.
+      await connection.query(
+        `DELETE FROM orders WHERE id IN (${placeholders})`,
+        orderIds
+      );
+    }
+
+    const [result] = await connection.query(
+      'DELETE FROM products WHERE id = ?',
+      [productId]
+    );
+
+    if (!result.affectedRows) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Producto no encontrado.' });
+    }
+
+    await connection.commit();
+    return res.json({
+      message: `Producto eliminado correctamente. También se eliminaron ${orderIds.length} pedido(s) relacionado(s).`,
+      deletedOrders: orderIds.length
+    });
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }));
 
 app.get('/api/customers', asyncRoute(async (_req, res) => {
